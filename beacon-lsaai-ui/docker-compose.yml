@@ -1,0 +1,16 @@
+version: '3'
+services:
+  beacon-ui:
+    image: nginx:alpine
+    container_name: beacon-ui
+    volumes:
+      - ./index.html:/usr/share/nginx/html/index.html
+      - ./test-login.html:/usr/share/nginx/html/test-login.html
+    ports:
+      - '8090:80'
+    networks:
+      - beacon-lsaai-network
+
+networks:
+  beacon-lsaai-network:
+    external: true

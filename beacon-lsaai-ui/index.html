@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+   <meta charset="UTF-8">
+   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+   <title>Beacon Query Interface</title>
+   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+   <style>
+       body {
+           padding-top: 20px;
+           padding-bottom: 40px;
+       }
+       .header {
+           padding-bottom: 20px;
+           border-bottom: 1px solid #e5e5e5;
+           margin-bottom: 30px;
+       }
+       pre {
+           background-color: #f8f9fa;
+           border: 1px solid #ddd;
+           border-radius: 4px;
+           padding: 10px;
+           white-space: pre-wrap;
+           word-wrap: break-word;
+           max-height: 400px;
+           overflow-y: auto;
+       }
+   </style>
+</head>
+<body>
+   <div class="container">
+       <div class="header">
+           <div class="row">
+               <div class="col-md-8">
+                   <h1>Beacon Query Interface</h1>
+                   <p class="lead">Search genomic variations with LSAAI authentication</p>
+               </div>
+               <div class="col-md-4 text-end">
+                   <div id="auth-status">
+                       <button id="login-btn" class="btn btn-primary">Log in with LSAAI</button>
+                       <div id="user-info" class="d-none">
+                           <span id="username" class="me-2"></span>
+                           <button id="logout-btn" class="btn btn-outline-secondary btn-sm">Log out</button>
+                       </div>
+                   </div>
+               </div>
+           </div>
+       </div>
+
+       <div class="row mb-4">
+           <div class="col-md-12">
+               <div class="alert alert-info" id="auth-message">
+                   You are not logged in. Public datasets will be accessible, but controlled datasets require authentication.
+               </div>
+           </div>
+       </div>
+
+       <div class="row">
+           <div class="col-md-12">
+               <div class="card">
+                   <div class="card-header">
+                       <h5>Genomic Query</h5>
+                   </div>
+                   <div class="card-body">
+                       <form id="query-form">
+                           <div class="row mb-3">
+                               <div class="col-md-6">
+                                   <label for="assemblyId" class="form-label">Assembly ID</label>
+                                   <select class="form-select" id="assemblyId" required>
+                                       <option value="GRCh37">GRCh37</option>
+                                       <option value="GRCh38">GRCh38</option>
+                                   </select>
+                               </div>
+                               <div class="col-md-6">
+                                   <label for="referenceName" class="form-label">Chromosome</label>
+                                   <select class="form-select" id="referenceName" required>
+                                       <option value="1">1</option>
+                                       <option value="2">2</option>
+                                       <option value="3">3</option>
+                                       <option value="4">4</option>
+                                       <option value="5">5</option>
+                                       <option value="6">6</option>
+                                       <option value="7">7</option>
+                                       <option value="8">8</option>
+                                       <option value="9">9</option>
+                                       <option value="10">10</option>
+                                       <option value="11">11</option>
+                                       <option value="12">12</option>
+                                       <option value="13">13</option>
+                                       <option value="14">14</option>
+                                       <option value="15">15</option>
+                                       <option value="16">16</option>
+                                       <option value="17">17</option>
+                                       <option value="18">18</option>
+                                       <option value="19">19</option>
+                                       <option value="20">20</option>
+                                       <option value="21">21</option>
+                                       <option value="22">22</option>
+                                       <option value="X">X</option>
+                                       <option value="Y">Y</option>
+                                   </select>
+                               </div>
+                           </div>
+                           <div class="row mb-3">
+                               <div class="col-md-6">
+                                   <label for="start" class="form-label">Start Position</label>
+                                   <input type="number" class="form-control" id="start" required>
+                               </div>
+                               <div class="col-md-6">
+                                   <label for="end" class="form-label">End Position</label>
+                                   <input type="number" class="form-control" id="end" required>
+                               </div>
+                           </div>
+                           <div class="row mb-3">
+                               <div class="col-md-6">
+                                   <label for="referenceBases" class="form-label">Reference Bases</label>
+                                   <input type="text" class="form-control" id="referenceBases">
+                               </div>
+                               <div class="col-md-6">
+                                   <label for="alternateBases" class="form-label">Alternate Bases</label>
+                                   <input type="text" class="form-control" id="alternateBases">
+                               </div>
+                           </div>
+                           <button type="submit" class="btn btn-primary">Search</button>
+                       </form>
+                   </div>
+               </div>
+           </div>
+       </div>
+
+       <div class="row mt-4">
+           <div class="col-md-12">
+               <div class="card">
+                   <div class="card-header">
+                       <h5>Results</h5>
+                   </div>
+                   <div class="card-body">
+                       <div id="results-container">
+                           <p class="text-muted">Submit a query to see results</p>
+                       </div>
+                   </div>
+               </div>
+           </div>
+       </div>
+   </div>
+
+   <script>
+       // Configuration
+       const config = {
+           lsaai: {
+               authUrl: 'http://localhost:8080/oidc/authorize',
+               tokenUrl: 'http://localhost:8080/oidc/token',
+               userInfoUrl: 'http://localhost:8080/oidc/userinfo',
+               clientId: 'beacon-api',
+               clientSecret: 'beacon-secret',
+               redirectUri: window.location.origin + window.location.pathname,
+               scope: 'openid profile email ga4gh_passport_v1'
+           },
+           beacon: {
+               apiUrl: 'http://localhost:5051/api'
+           }
+       };
+
+       // DOM Elements
+       const loginBtn = document.getElementById('login-btn');
+       const logoutBtn = document.getElementById('logout-btn');
+       const userInfo = document.getElementById('user-info');
+       const username = document.getElementById('username');
+       const authMessage = document.getElementById('auth-message');
+       const queryForm = document.getElementById('query-form');
+       const resultsContainer = document.getElementById('results-container');
+
+       // Auth state
+       let authState = {
+           accessToken: null,
+           idToken: null,
+           refreshToken: null,
+           expiresAt: null,
+           userInfo: null
+       };
+
+       // Initialize application
+       function init() {
+           // Check if we're returning from auth redirect
+           const urlParams = new URLSearchParams(window.location.search);
+           const code = urlParams.get('code');
+           
+           // Clean up URL
+           if (urlParams.has('code') || urlParams.has('error')) {
+               const cleanUrl = window.location.protocol + '//' + window.location.host + window.location.pathname;
+               window.history.replaceState({}, document.title, cleanUrl);
+           }
+           
+           if (code) {
+               // Exchange code for tokens
+               exchangeCodeForTokens(code);
+           } else {
+               // Check for existing tokens in localStorage
+               loadAuthState();
+               if (authState.accessToken && !isTokenExpired()) {
+                   onLoggedIn();
+               }
+           }
+           
+           // Set up event listeners
+           loginBtn.addEventListener('click', initiateLogin);
+           logoutBtn.addEventListener('click', logout);
+           queryForm.addEventListener('submit', handleSubmit);
+       }
+
+       // Check if token is expired
+       function isTokenExpired() {
+           return !authState.expiresAt || authState.expiresAt <= Date.now();
+       }
+
+       // Load auth state from localStorage
+       function loadAuthState() {
+           const storedState = localStorage.getItem('authState');
+           if (storedState) {
+               try {
+                   authState = JSON.parse(storedState);
+               } catch (e) {
+                   console.error('Error parsing stored auth state', e);
+                   authState = {
+                       accessToken: null,
+                       idToken: null,
+                       refreshToken: null,
+                       expiresAt: null,
+                       userInfo: null
+                   };
+               }
+           }
+       }
+
+       // Save auth state to localStorage
+       function saveAuthState() {
+           localStorage.setItem('authState', JSON.stringify(authState));
+       }
+
+       // Clear auth state
+       function clearAuthState() {
+           authState = {
+               accessToken: null,
+               idToken: null,
+               refreshToken: null,
+               expiresAt: null,
+               userInfo: null
+           };
+           localStorage.removeItem('authState');
+       }
+
+       // Initiate the login process
+       function initiateLogin() {
+           const state = generateRandomString(16);
+           const nonce = generateRandomString(16);
+           
+           // Store state and nonce
+           sessionStorage.setItem('auth_state', state);
+           sessionStorage.setItem('auth_nonce', nonce);
+           
+           // Build authorization URL
+           const authUrl = new URL(config.lsaai.authUrl);
+           authUrl.searchParams.append('client_id', config.lsaai.clientId);
+           authUrl.searchParams.append('response_type', 'code');
+           authUrl.searchParams.append('redirect_uri', config.lsaai.redirectUri);
+           authUrl.searchParams.append('scope', config.lsaai.scope);
+           authUrl.searchParams.append('state', state);
+           authUrl.searchParams.append('nonce', nonce);
+           
+           // Redirect to authorization endpoint
+           window.location.href = authUrl.toString();
+       }
+
+       // Exchange authorization code for tokens
+       function exchangeCodeForTokens(code) {
+           // Create form data for token request
+           const formData = new URLSearchParams();
+           formData.append('grant_type', 'authorization_code');
+           formData.append('code', code);
+           formData.append('redirect_uri', config.lsaai.redirectUri);
+           formData.append('client_id', config.lsaai.clientId);
+           
+           // Basic auth using client_id and client_secret
+           const authHeader = 'Basic ' + btoa(`${config.lsaai.clientId}:${config.lsaai.clientSecret}`);
+           
+           // Make token request
+           fetch(config.lsaai.tokenUrl, {
+               method: 'POST',
+               headers: {
+                   'Content-Type': 'application/x-www-form-urlencoded',
+                   'Authorization': authHeader
+               },
+               body: formData.toString()
+           })
+           .then(response => {
+               if (!response.ok) {
+                   throw new Error(`Token request failed: ${response.status} ${response.statusText}`);
+               }
+               return response.json();
+           })
+           .then(data => {
+               console.log('Token response:', data);
+               
+               // Store tokens
+               authState.accessToken = data.access_token;
+               authState.idToken = data.id_token;
+               authState.refreshToken = data.refresh_token;
+               
+               // Calculate token expiry
+               if (data.expires_in) {
+                   authState.expiresAt = Date.now() + (data.expires_in * 1000);
+               }
+               
+               // Parse ID token for user info
+               parseIdToken(data.id_token);
+               
+               // Save auth state
+               saveAuthState();
+               
+               // Update UI
+               onLoggedIn();
+           })
+           .catch(error => {
+               console.error('Error exchanging code for tokens:', error);
+               alert('Failed to complete authentication. See console for details.');
+           });
+       }
+
+       // Parse ID token
+       function parseIdToken(idToken) {
+           const idTokenParts = idToken.split('.');
+           if (idTokenParts.length === 3) {
+               try {
+                   // Base64 decode and parse JSON
+                   const payloadBase64 = idTokenParts[1].replace(/-/g, '+').replace(/_/g, '/');
+                   const payload = JSON.parse(atob(payloadBase64));
+                   
+                   // Store user info
+                   authState.userInfo = {
+                       sub: payload.sub,
+                       name: payload.name || payload.sub,
+                       email: payload.email,
+                       preferred_username: payload.preferred_username
+                   };
+               } catch (e) {
+                   console.error('Error parsing ID token:', e);
+               }
+           }
+       }
+
+       // Handle successful login
+       function onLoggedIn() {
+           // Update UI
+           loginBtn.classList.add('d-none');
+           userInfo.classList.remove('d-none');
+           username.textContent = authState.userInfo?.name || 'Authenticated User';
+           
+           // Update auth message
+           authMessage.className = 'alert alert-success';
+           authMessage.textContent = 'You are logged in. You have access to both public and authorized controlled datasets.';
+       }
+
+       // Logout
+       function logout() {
+           // Clear auth state
+           clearAuthState();
+           
+           // Update UI
+           loginBtn.classList.remove('d-none');
+           userInfo.classList.add('d-none');
+           
+           // Update auth message
+           authMessage.className = 'alert alert-info';
+           authMessage.textContent = 'You are not logged in. Public datasets will be accessible, but controlled datasets require authentication.';
+           
+           // Clear results
+           resultsContainer.innerHTML = '<p class="text-muted">Submit a query to see results</p>';
+       }
+
+       // Handle form submission
+       function handleSubmit(event) {
+           event.preventDefault();
+           
+           // Get form values
+           const assemblyId = document.getElementById('assemblyId').value;
+           const referenceName = document.getElementById('referenceName').value;
+           const start = parseInt(document.getElementById('start').value);
+           const end = parseInt(document.getElementById('end').value);
+           const referenceBases = document.getElementById('referenceBases').value;
+           const alternateBases = document.getElementById('alternateBases').value;
+           
+           // Create request body
+           const requestBody = {
+               meta: {
+                   apiVersion: "2.0"
+               },
+               query: {
+                   requestParameters: {
+                       assemblyId: assemblyId,
+                       referenceName: referenceName,
+                       start: [start],
+                       end: [end]
+                   },
+                   filters: [],
+                   includeResultsetResponses: "HIT",
+                   pagination: {
+                       skip: 0,
+                       limit: 10
+                   },
+                   testMode: false,
+                   requestedGranularity: "record"
+               }
+           };
+           
+           // Add optional parameters if provided
+           if (referenceBases) {
+               requestBody.query.requestParameters.referenceBases = referenceBases;
+           }
+           if (alternateBases) {
+               requestBody.query.requestParameters.alternateBases = alternateBases;
+           }
+           
+           // Prepare headers
+           const headers = {
+               'Content-Type': 'application/json'
+           };
+           
+           // Add Authorization header if logged in
+           if (authState.accessToken) {
+               headers['Authorization'] = `Bearer ${authState.accessToken}`;
+           }
+           
+           // Show loading state
+           resultsContainer.innerHTML = '<div class="d-flex justify-content-center"><div class="spinner-border" role="status"><span class="visually-hidden">Loading...</span></div></div>';
+           
+           // Make request to Beacon API
+           fetch(`${config.beacon.apiUrl}/g_variants`, {
+               method: 'POST',
+               headers: headers,
+               body: JSON.stringify(requestBody)
+           })
+           .then(response => {
+               if (response.status === 401) {
+                   // Unauthorized - prompt for login
+                   resultsContainer.innerHTML = '<div class="alert alert-warning">Authentication required to access controlled datasets. Please log in.</div>';
+                   return null;
+               }
+               
+               if (!response.ok) {
+                   throw new Error(`Beacon query failed: ${response.status} ${response.statusText}`);
+               }
+               
+               return response.json();
+           })
+           .then(data => {
+               if (!data) return;
+               
+               // Display results
+               displayResults(data);
+           })
+           .catch(error => {
+               console.error('Error querying Beacon API:', error);
+               resultsContainer.innerHTML = `<div class="alert alert-danger">Error: ${error.message}</div>`;
+           });
+       }
+
+       // Display results
+       function displayResults(data) {
+           // Clear previous results
+           resultsContainer.innerHTML = '';
+           
+           // Check if we have results
+           if (!data.response?.resultSets || data.response.resultSets.length === 0) {
+               resultsContainer.innerHTML = '<p>No results found.</p>';
+               return;
+           }
+           
+           // Get result sets with exists=true
+           const existingResultSets = data.response.resultSets.filter(rs => rs.exists);
+           
+           if (existingResultSets.length === 0) {
+               resultsContainer.innerHTML = '<p>No matching variants found in any dataset.</p>';
+               return;
+           }
+           
+           // Calculate total count across all result sets
+           const totalCount = existingResultSets.reduce((sum, rs) => sum + (rs.resultsCount || 0), 0);
+           
+           // Create results summary
+           const summaryDiv = document.createElement('div');
+           summaryDiv.className = 'alert alert-info';
+           summaryDiv.innerHTML = `Found ${totalCount} matching variants across ${existingResultSets.length} datasets.`;
+           resultsContainer.appendChild(summaryDiv);
+           
+           // Create results table
+           const table = document.createElement('table');
+           table.className = 'table table-striped table-hover';
+           
+           // Create table header
+           const thead = document.createElement('thead');
+           thead.innerHTML = `
+               <tr>
+                   <th>Dataset</th>
+                   <th>Variant</th>
+                   <th>Type</th>
+                   <th>Details</th>
+               </tr>
+           `;
+           table.appendChild(thead);
+           
+           // Create table body
+           const tbody = document.createElement('tbody');
+           
+           // Add results from each result set
+           existingResultSets.forEach(resultSet => {
+               if (!resultSet.results || resultSet.results.length === 0) return;
+               
+               resultSet.results.forEach(result => {
+                   const row = document.createElement('tr');
+                   
+                   // Dataset cell
+                   const datasetCell = document.createElement('td');
+                   datasetCell.textContent = resultSet.id || 'Unknown';
+                   row.appendChild(datasetCell);
+                   
+                   // Variant cell
+                   const variantCell = document.createElement('td');
+                   if (result.variation) {
+                       const v = result.variation;
+                       variantCell.textContent = `${v.referenceName || ''}:${v.start || ''}${v.referenceBases || ''} > ${v.alternateBases || ''}`;
+                   } else {
+                       variantCell.textContent = 'N/A';
+                   }
+                   row.appendChild(variantCell);
+                   
+                   // Type cell
+                   const typeCell = document.createElement('td');
+                   if (result.variation && result.variation.variantType) {
+                       typeCell.textContent = result.variation.variantType;
+                   } else {
+                       typeCell.textContent = 'N/A';
+                   }
+                   row.appendChild(typeCell);
+                   
+                   // Details cell
+                   const detailsCell = document.createElement('td');
+                   const detailsBtn = document.createElement('button');
+                   detailsBtn.className = 'btn btn-sm btn-outline-primary';
+                   detailsBtn.textContent = 'View Details';
+                   detailsBtn.addEventListener('click', () => showVariantDetails(result));
+                   detailsCell.appendChild(detailsBtn);
+                   row.appendChild(detailsCell);
+                   
+                   tbody.appendChild(row);
+               });
+           });
+           
+           table.appendChild(tbody);
+           resultsContainer.appendChild(table);
+       }
+
+       // Show variant details
+       function showVariantDetails(variant) {
+           // Create modal
+           const modalDiv = document.createElement('div');
+           modalDiv.className = 'modal fade';
+           modalDiv.id = 'variantDetailsModal';
+           modalDiv.setAttribute('tabindex', '-1');
+           modalDiv.setAttribute('aria-labelledby', 'variantDetailsModalLabel');
+           modalDiv.setAttribute('aria-hidden', 'true');
+           
+           // Modal content
+           modalDiv.innerHTML = `
+               <div class="modal-dialog modal-lg">
+                   <div class="modal-content">
+                       <div class="modal-header">
+                           <h5 class="modal-title" id="variantDetailsModalLabel">Variant Details</h5>
+                           <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                       </div>
+                       <div class="modal-body">
+                           <pre>${JSON.stringify(variant, null, 2)}</pre>
+                       </div>
+                       <div class="modal-footer">
+                           <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                       </div>
+                   </div>
+               </div>
+           `;
+           
+           // Add modal to DOM
+           document.body.appendChild(modalDiv);
+           
+           // Initialize and show modal
+           const modal = new bootstrap.Modal(modalDiv);
+           modal.show();
+           
+           // Remove modal from DOM when hidden
+           modalDiv.addEventListener('hidden.bs.modal', () => {
+               modalDiv.remove();
+           });
+       }
+
+       // Helper function to generate random string
+       function generateRandomString(length) {
+           const charset = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+           let result = '';
+           const randomValues = new Uint8Array(length);
+           window.crypto.getRandomValues(randomValues);
+           for (let i = 0; i < length; i++) {
+               result += charset[randomValues[i] % charset.length];
+           }
+           return result;
+       }
+
+       // Initialize on page load
+       document.addEventListener('DOMContentLoaded', init);
+   </script>
+   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
