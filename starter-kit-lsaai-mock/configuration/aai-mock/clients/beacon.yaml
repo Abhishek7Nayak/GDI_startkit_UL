@@ -1,0 +1,11 @@
+client-name: "Beacon API"
+client-id: "beacon-api"
+client-secret: "beacon-secret"
+redirect-uris: ["http://localhost:8090/callback",
+  "http://localhost:8090/",
+  "http://localhost:8090/index.html",
+  "http://localhost:8090/test-login.html"]
+token-endpoint-auth-method: "client_secret_basic"
+scope: ["openid", "profile", "email", "ga4gh_passport_v1"]
+grant-types: ["authorization_code", "client_credentials"]
+post-logout-redirect-uris: ["http://localhost:8090/"]

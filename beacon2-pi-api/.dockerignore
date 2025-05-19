@@ -1,0 +1,3 @@
+*.vcf.gz
+ri_tools/vcf/files_to_read/*vcf.gz
+beacon/connections/mongo/data/datasets/*
